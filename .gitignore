@@ -1,0 +1,38 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test outputs
+*.png
+*.state
+*.prg
+
+# Go build artifacts
+*.o
+*.a
+c64emu
+
+# Dependency directories
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ROMs (copyrighted content - users must provide their own)
+roms/basic
+roms/kernal
+roms/chargen
+
+# Build output
+dist/
+build/
