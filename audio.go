@@ -6,36 +6,28 @@ import (
 
 const (
 	AudioSampleRate = 44100
-	cyclesPerSample = 985248 / AudioSampleRate // ~22 cycles per sample for PAL
 )
 
 // SIDAudioStream implements io.Reader to provide continuous audio playback
+// NOTE: This stream ONLY reads from the SID; it does NOT call machine.Step().
+// The machine is advanced exclusively by the Ebiten Update() thread to avoid
+// race conditions on shared state (framebuffer, CPU registers, CIA timers).
 type SIDAudioStream struct {
-	sid     *SID
-	machine *Machine
-	buffer  []byte
-	pos     int
+	sid *SID
 }
 
 func NewSIDAudioStream(machine *Machine) *SIDAudioStream {
 	return &SIDAudioStream{
-		sid:     machine.SID(),
-		machine: machine,
-		buffer:  make([]byte, 0),
+		sid: machine.SID(),
 	}
 }
 
 func (s *SIDAudioStream) Read(p []byte) (int, error) {
-	// Generate samples on demand
 	n := len(p) / 2 // 16-bit samples
 	if n == 0 {
 		return 0, nil
 	}
 	for i := 0; i < n; i++ {
-		// Run machine for ~22 cycles to generate one sample
-		for j := 0; j < cyclesPerSample; j++ {
-			s.machine.Step()
-		}
 		sample := s.sid.Sample()
 		// Clamp sample to [-1, 1]
 		if sample > 1.0 {
