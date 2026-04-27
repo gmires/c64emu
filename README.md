@@ -33,7 +33,7 @@ Questo progetto emula l'hardware del Commodore 64 includendo:
 | Joystick input | ✅ | Emulato da tastiera (freccie + Ctrl destro) |
 | GUI Window (Ebiten) | ✅ | 60 FPS, scala configurabile, fullscreen |
 | PRG Loader | ✅ | Auto-run con RUN (BASIC) o JMP (ML) |
-| D64 Loader | ✅ | Read + list + extract PRG files |
+| D64 Loader | ✅ | List, extract, partial name matching, bulk load |
 | TAP Loader | ⚠️ | Basic PRG extraction |
 | CRT Loader | ✅ | Cartridge ROM mapping |
 | Save States | ✅ | Salvataggio/caricamento completo |
@@ -231,8 +231,12 @@ roms/
 # Lista file in un D64
 ./c64emu -d64 disco.d64
 
-# Carica file da D64
+# Carica file da D64 (nome parziale, case-insensitive)
 ./c64emu -d64 disco.d64 -d64file "GIOCO" -autorun -gui
+# "Pyramid" trova automaticamente "100.000 PYRAMID"
+
+# Carica TUTTI i file PRG da D64 in memoria (utile per giochi multi-file)
+./c64emu -d64 disco.d64 -d64bulk -autorun -gui
 
 # Carica da TAP
 ./c64emu -tap gioco.tap -autorun -gui
@@ -578,7 +582,8 @@ $E000-$FFFF  ROM KERNAL (8KB, se HIRAM=1)
 -test             Inietta pattern di test
 -prg FILE         Carica file PRG
 -d64 FILE         Carica immagine disco D64
--d64file NAME     File da caricare da D64
+-d64file NAME     File da caricare da D64 (supporta partial match)
+-d64bulk          Carica tutti i file PRG dal D64 in memoria
 -tap FILE         Carica immagine nastro TAP
 -crt FILE         Carica cartuccia CRT
 -autorun          Auto-esegui PRG caricato
@@ -603,7 +608,7 @@ $E000-$FFFF  ROM KERNAL (8KB, se HIRAM=1)
 - [ ] **Raster interrupts** avanzati — timing preciso per split-screen
 - [x] **Audio output** su device audio reale — ✅ Base implementata via Ebiten stream
 - [x] **Fullscreen mode** — ✅ Supportato
-- [ ] **1541 Disk Drive completo** — emulazione protocollo seriale KERNAL
+- [ ] **1541 Disk Drive completo** — emulazione protocollo seriale KERNAL per giochi multi-file D64 (es. Pyramid) che caricano dati durante l'esecuzione
 
 ### Priorità Bassa
 - [ ] **REU** (RAM Expansion Unit)
