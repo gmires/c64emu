@@ -14,6 +14,7 @@ func main() {
 		prgFile  = flag.String("prg", "", "Load PRG file")
 		d64File  = flag.String("d64", "", "Load D64 disk image")
 		d64Entry = flag.String("d64file", "", "File to load from D64")
+		d64Bulk  = flag.Bool("d64bulk", false, "Load all PRG files from D64 into memory")
 		tapFile  = flag.String("tap", "", "Load TAP tape image")
 		crtFile  = flag.String("crt", "", "Load CRT cartridge")
 		autoRun  = flag.Bool("autorun", false, "Auto-run loaded PRG (RUN for BASIC, JMP for ML)")
@@ -119,7 +120,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error loading D64: %v\n", err)
 			os.Exit(1)
 		}
-		if *d64Entry == "" {
+		if *d64Entry == "" && !*d64Bulk {
 			// List files
 			entries, err := d64.ListFiles()
 			if err != nil {
@@ -132,18 +133,30 @@ func main() {
 			}
 			os.Exit(0)
 		}
-		data, err := d64.ReadFile(*d64Entry)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading file from D64: %v\n", err)
-			os.Exit(1)
+		if *d64Bulk {
+			// Load all PRG files
+			loaded, err := d64.LoadAllPRG(machine)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error bulk loading D64: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Bulk loaded %d PRG files from D64\n", loaded)
+			// Set load address to $0801 for autorun (first BASIC program)
+			prgAddr = 0x0801
+		} else {
+			data, err := d64.ReadFile(*d64Entry)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading file from D64: %v\n", err)
+				os.Exit(1)
+			}
+			if len(data) >= 2 {
+				prgAddr = uint16(data[0]) | uint16(data[1])<<8
+			}
+			for i := 2; i < len(data); i++ {
+				machine.Bus().Write(prgAddr+uint16(i-2), data[i])
+			}
+			fmt.Printf("Loaded '%s' from D64 at $%04X (%d bytes)\n", *d64Entry, prgAddr, len(data)-2)
 		}
-		if len(data) >= 2 {
-			prgAddr = uint16(data[0]) | uint16(data[1])<<8
-		}
-		for i := 2; i < len(data); i++ {
-			machine.Bus().Write(prgAddr+uint16(i-2), data[i])
-		}
-		fmt.Printf("Loaded '%s' from D64 at $%04X (%d bytes)\n", *d64Entry, prgAddr, len(data)-2)
 	}
 
 	// Load from TAP

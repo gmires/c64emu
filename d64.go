@@ -3,6 +3,7 @@ package c64
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // D64Reader reads Commodore 1541 disk images
@@ -118,18 +119,67 @@ func d64FileType(t uint8) string {
 	return "???"
 }
 
-// ReadFile reads a PRG file from the D64 image and returns the data
+// ReadFile reads a PRG file from the D64 image and returns the data.
+// Name matching is case-insensitive and supports partial matches.
 func (d *D64Reader) ReadFile(name string) ([]byte, error) {
 	entries, err := d.ListFiles()
 	if err != nil {
 		return nil, err
 	}
+	// Normalize: uppercase and trim spaces (C64 uses PETSCII uppercase)
+	searchName := strings.ToUpper(strings.TrimSpace(name))
+
+	// First try exact match
 	for _, e := range entries {
-		if e.Name == name && e.Type == "PRG" {
+		entryName := strings.ToUpper(strings.TrimSpace(e.Name))
+		if entryName == searchName && e.Type == "PRG" {
 			return d.readChain(e.Track, e.Sector)
 		}
 	}
-	return nil, fmt.Errorf("file '%s' not found", name)
+	// Then try partial match
+	for _, e := range entries {
+		entryName := strings.ToUpper(strings.TrimSpace(e.Name))
+		if strings.Contains(entryName, searchName) && e.Type == "PRG" {
+			return d.readChain(e.Track, e.Sector)
+		}
+	}
+	// Build helpful error message with available files
+	var available []string
+	for _, e := range entries {
+		if e.Type == "PRG" {
+			available = append(available, fmt.Sprintf("'%s'", strings.TrimSpace(e.Name)))
+		}
+	}
+	return nil, fmt.Errorf("file '%s' not found. Available PRG files: %s", name, strings.Join(available, ", "))
+}
+
+// LoadAllPRG loads all PRG files from the D64 into machine memory at their
+// respective load addresses. This is useful for multi-file games that load
+// additional data during execution.
+func (d *D64Reader) LoadAllPRG(machine *Machine) (int, error) {
+	entries, err := d.ListFiles()
+	if err != nil {
+		return 0, err
+	}
+	loaded := 0
+	for _, e := range entries {
+		if e.Type != "PRG" {
+			continue
+		}
+		data, err := d.readChain(e.Track, e.Sector)
+		if err != nil {
+			continue
+		}
+		if len(data) < 2 {
+			continue
+		}
+		addr := uint16(data[0]) | uint16(data[1])<<8
+		for i := 2; i < len(data); i++ {
+			machine.Bus().Write(addr+uint16(i-2), data[i])
+		}
+		loaded++
+	}
+	return loaded, nil
 }
 
 func (d *D64Reader) readChain(startTrack, startSector int) ([]byte, error) {
