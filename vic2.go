@@ -219,3 +219,9 @@ func (v *VIC2) RasterRenderer() *RasterRenderer {
 func (v *VIC2) Ctrl1() uint8 {
 	return v.ctrl1
 }
+
+// IRQ returns true when at least one enabled interrupt flag is set.
+// Acknowledged by the CPU writing the flag bits to $D019.
+func (v *VIC2) IRQ() bool {
+	return v.irqFlags&v.irqMask&0x0F != 0
+}

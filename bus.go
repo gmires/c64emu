@@ -77,16 +77,16 @@ func (b *Bus) Read(addr uint16) uint8 {
 		return b.RAM[addr]
 	case addr >= 0xE000:
 		if b.hiram() {
-			// Hook KERNAL I/O routines so the emulator can intercept them
+			// Intercept only the KERNAL routines that are purely D64/PRG load
+			// helpers. OPEN/CLOSE/CHKIN/CHRIN are left to the real KERNAL so
+			// that BASIC keyboard input (CHRIN for the READY. prompt) continues
+			// to work. Hooking CHRIN for all callers causes "OUT OF DATA ERROR
+			// IN 0" to cycle because BASIC calls $FFCF to read its command line.
 			switch addr {
-		case 0xFFBA, // SETLFS
-			0xFFBD, // SETNAM
-			0xFFC0, // OPEN
-			0xFFC3, // CLOSE
-			0xFFC6, // CHKIN
-			0xFFCF, // CHRIN
-			0xFFD5: // LOAD
-			return 0x60 // RTS - let the Machine hook handle the logic
+		case 0xFFBA, // SETLFS — capture device/secondary address
+			0xFFBD, // SETNAM — capture filename
+			0xFFD5: // LOAD   — intercept for D64 loading
+			return 0x60 // RTS — Machine.Step() handles the actual logic
 			}
 			if len(b.Kernal) > 0 {
 				return b.Kernal[addr-0xE000]
@@ -110,22 +110,27 @@ func (b *Bus) charon() bool { return b.effectivePort()&0x04 != 0 }
 func (b *Bus) readIO(addr uint16) uint8 {
 	offset := addr & 0x0FFF
 	switch {
-	case offset >= 0x000 && offset <= 0x3FF:
-		if b.vic != nil && offset < 0x040 {
+	case offset <= 0x3FF:
+		// VIC-II: 64 registers mirrored every 64 bytes across $D000-$D3FF
+		if b.vic != nil {
 			return b.vic.readReg(uint8(offset & 0x3F))
 		}
-	case offset >= 0x400 && offset <= 0x7FF:
-		if b.sid != nil && offset < 0x420 {
+	case offset <= 0x7FF:
+		// SID: 32 registers mirrored every 32 bytes across $D400-$D7FF
+		if b.sid != nil {
 			return b.sid.readReg(uint8(offset & 0x1F))
 		}
-	case offset >= 0x800 && offset <= 0xBFF:
+	case offset <= 0xBFF:
+		// Color RAM: $D800-$DBFF
 		return b.Color[offset-0x800] & 0x0F
-	case offset >= 0xC00 && offset <= 0xCFF:
-		if b.cia[0] != nil && offset < 0xC10 {
+	case offset <= 0xCFF:
+		// CIA-1: 16 registers mirrored every 16 bytes across $DC00-$DCFF
+		if b.cia[0] != nil {
 			return b.cia[0].readReg(uint8(offset & 0x0F))
 		}
-	case offset >= 0xD00 && offset <= 0xDFF:
-		if b.cia[1] != nil && offset < 0xD10 {
+	case offset <= 0xDFF:
+		// CIA-2: 16 registers mirrored every 16 bytes across $DD00-$DDFF
+		if b.cia[1] != nil {
 			return b.cia[1].readReg(uint8(offset & 0x0F))
 		}
 	}
@@ -151,13 +156,17 @@ func (b *Bus) Write(addr uint16, val uint8) {
 	case addr >= 0xC000 && addr < 0xD000:
 		b.RAM[addr] = val
 	case addr >= 0xD000 && addr < 0xE000:
-		// Color RAM ($D800-$DBFF) is always writable, regardless of CHAREN
+		// Color RAM is a separate physical chip, always writable regardless of CHAREN.
 		if addr >= 0xD800 && addr < 0xDC00 {
 			b.Color[addr-0xD800] = val & 0x0F
 		}
-		// Always write to RAM (even in I/O area, for write-through behavior)
-		b.RAM[addr] = val
-		b.handleIO(addr, val)
+		if b.charon() {
+			// I/O mode: writes go to the chips only, not to the RAM underneath.
+			b.handleIO(addr, val)
+		} else {
+			// Char ROM / RAM mode: writes go to RAM.
+			b.RAM[addr] = val
+		}
 	case addr >= 0xE000:
 		b.RAM[addr] = val
 	}

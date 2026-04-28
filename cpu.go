@@ -123,17 +123,27 @@ func (c *CPU6510) IRQ() {
 
 // Addressing modes
 func (c *CPU6510) zp() uint16     { return uint16(c.fetch()) }
-func (c *CPU6510) zpX() uint16    { return uint16(c.fetch() + c.X) }
-func (c *CPU6510) zpY() uint16    { return uint16(c.fetch() + c.Y) }
+func (c *CPU6510) zpX() uint16    { return uint16((c.fetch() + c.X) & 0xFF) }
+func (c *CPU6510) zpY() uint16    { return uint16((c.fetch() + c.Y) & 0xFF) }
 func (c *CPU6510) abs() uint16    { lo := c.fetch(); hi := c.fetch(); return uint16(lo) | uint16(hi)<<8 }
 func (c *CPU6510) absX() uint16   { lo := c.fetch(); hi := c.fetch(); return (uint16(lo) | uint16(hi)<<8) + uint16(c.X) }
 func (c *CPU6510) absY() uint16   { lo := c.fetch(); hi := c.fetch(); return (uint16(lo) | uint16(hi)<<8) + uint16(c.Y) }
-func (c *CPU6510) indX() uint16   { zp := c.fetch() + c.X; lo := c.read(uint16(zp)); hi := c.read(uint16(zp + 1)); return uint16(lo) | uint16(hi)<<8 }
-func (c *CPU6510) indY() uint16   { zp := c.fetch(); lo := c.read(uint16(zp)); hi := c.read(uint16(zp + 1)); return (uint16(lo) | uint16(hi)<<8) + uint16(c.Y) }
-func (c *CPU6510) ind() uint16    { lo := c.fetch(); hi := c.fetch(); ptr := uint16(lo) | uint16(hi)<<8; return uint16(c.read(ptr)) | uint16(c.read(ptr+1))<<8 }
+func (c *CPU6510) indX() uint16   { zp := uint16((c.fetch() + c.X) & 0xFF); lo := c.read(zp); hi := c.read((zp + 1) & 0xFF); return uint16(lo) | uint16(hi)<<8 }
+func (c *CPU6510) indY() uint16   { zp := uint16(c.fetch()); lo := c.read(zp); hi := c.read((zp + 1) & 0xFF); return (uint16(lo) | uint16(hi)<<8) + uint16(c.Y) }
+func (c *CPU6510) ind() uint16 {
+	lo := c.fetch()
+	hi := c.fetch()
+	ptr := uint16(lo) | uint16(hi)<<8
+	// Replicate the 6502 page-boundary bug: if ptr low byte is $FF, the high
+	// byte of the target address wraps to $xx00 instead of advancing to $xx+1,00.
+	hiPtr := (ptr & 0xFF00) | uint16(uint8(lo+1))
+	return uint16(c.read(ptr)) | uint16(c.read(hiPtr))<<8
+}
 
-func (c *CPU6510) pageCross(addr, reg uint16) uint8 {
-	if (addr & 0xFF00) != ((addr + reg) & 0xFF00) {
+// pageCross returns 1 when indexing crosses a page boundary.
+// finalAddr is the already-indexed address (base + reg); base = finalAddr - reg.
+func (c *CPU6510) pageCross(finalAddr, reg uint16) uint8 {
+	if ((finalAddr-reg) & 0xFF00) != (finalAddr & 0xFF00) {
 		return 1
 	}
 	return 0

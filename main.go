@@ -257,19 +257,13 @@ func (m *Machine) Step() int {
 	// The Bus returns RTS ($60) for these addresses so the CPU
 	// immediately returns to the caller after our hook runs.
 	pcBefore := m.cpu.PC
+	// Only SETLFS/SETNAM/LOAD are intercepted; OPEN/CLOSE/CHKIN/CHRIN
+	// are handled by the real KERNAL to keep keyboard input working.
 	switch pcBefore {
 	case 0xFFBA:
 		m.handleSetLfs()
 	case 0xFFBD:
 		m.handleSetNam()
-	case 0xFFC0:
-		m.handleOpen()
-	case 0xFFC3:
-		m.handleClose()
-	case 0xFFC6:
-		m.handleChkin()
-	case 0xFFCF:
-		m.handleChrin()
 	case 0xFFD5:
 		m.handleLoad()
 	}
@@ -284,14 +278,12 @@ func (m *Machine) Step() int {
 		m.sid.step()
 	}
 
-	if m.cia[0].IRQ() || m.cia[1].IRQ() {
+	// IRQ is level-triggered: keep the line asserted until the handler
+	// acknowledges it by reading the ICR register ($DC0D / $DD0D for CIA,
+	// $D019 for VIC-II).  Do NOT call AckIRQ() here — that would silently
+	// drop interrupts that arrive while FlagI is set.
+	if m.cia[0].IRQ() || m.cia[1].IRQ() || m.vic.IRQ() {
 		m.cpu.IRQ()
-		if m.cia[0].IRQ() {
-			m.cia[0].AckIRQ()
-		}
-		if m.cia[1].IRQ() {
-			m.cia[1].AckIRQ()
-		}
 	}
 	return int(cycles)
 }
@@ -600,14 +592,8 @@ func (m *Machine) TraceRun(steps int, callback func(step int, pc uint16, opcode 
 			m.cia[1].Step()
 			m.sid.step()
 		}
-		if m.cia[0].IRQ() || m.cia[1].IRQ() {
+		if m.cia[0].IRQ() || m.cia[1].IRQ() || m.vic.IRQ() {
 			m.cpu.IRQ()
-			if m.cia[0].IRQ() {
-				m.cia[0].AckIRQ()
-			}
-			if m.cia[1].IRQ() {
-				m.cia[1].AckIRQ()
-			}
 		}
 	}
 }

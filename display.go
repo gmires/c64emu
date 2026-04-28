@@ -9,6 +9,7 @@ type Display struct {
 	scale       float64
 	fullscreen  bool
 	img         *ebiten.Image
+	pixels      []byte
 	width       int
 	height      int
 	frameCount  int
@@ -24,6 +25,7 @@ func NewDisplay(machine *Machine, scale float64, fullscreen bool) (*Display, err
 		width:      w,
 		height:     h,
 		img:        ebiten.NewImage(w, h),
+		pixels:     make([]byte, w*h*4),
 	}
 	// Initialize audio if possible
 	if audioSys, err := NewAudioSystem(machine); err == nil {
@@ -43,16 +45,15 @@ func (d *Display) Update() error {
 func (d *Display) Draw(screen *ebiten.Image) {
 	fb := d.machine.FrameBuffer()
 
-	// Update Ebiten image pixels directly (much faster than recreating image)
-	pixels := make([]byte, d.width*d.height*4)
+	// Write into the pre-allocated pixel buffer (avoids 418 KB allocation/GC per frame)
 	for i := 0; i < len(fb) && i < d.width*d.height; i++ {
 		c := fb[i]
-		pixels[i*4+0] = uint8((c >> 16) & 0xFF) // R
-		pixels[i*4+1] = uint8((c >> 8) & 0xFF)  // G
-		pixels[i*4+2] = uint8(c & 0xFF)         // B
-		pixels[i*4+3] = 255                     // A
+		d.pixels[i*4+0] = uint8((c >> 16) & 0xFF) // R
+		d.pixels[i*4+1] = uint8((c >> 8) & 0xFF)  // G
+		d.pixels[i*4+2] = uint8(c & 0xFF)         // B
+		d.pixels[i*4+3] = 255                     // A
 	}
-	d.img.ReplacePixels(pixels)
+	d.img.ReplacePixels(d.pixels)
 
 	// Draw - Ebiten handles scaling automatically between Layout size and window
 	op := &ebiten.DrawImageOptions{}
