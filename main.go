@@ -15,6 +15,19 @@ type Machine struct {
 	vic  *VIC2
 	cia  [2]*CIA
 	sid  *SID
+
+	// Mounted disk image for KERNAL I/O interception
+	d64Reader *D64Reader
+
+	// KERNAL hook state (SETLFS / SETNAM)
+	hookLfsDevice    uint8
+	hookLfsSecondary uint8
+	hookFileName     string
+
+	// Serial I/O emulation for multi-file games (OPEN/CHKIN/CHRIN)
+	serialOpen       bool
+	serialData       []byte
+	serialPos        int
 }
 
 func NewMachine(cfg *SystemConfig) *Machine {
@@ -234,6 +247,27 @@ func (m *Machine) runFrame() {
 }
 
 func (m *Machine) Step() int {
+	// Intercept KERNAL I/O routines before executing the opcode.
+	// The Bus returns RTS ($60) for these addresses so the CPU
+	// immediately returns to the caller after our hook runs.
+	pcBefore := m.cpu.PC
+	switch pcBefore {
+	case 0xFFBA:
+		m.handleSetLfs()
+	case 0xFFBD:
+		m.handleSetNam()
+	case 0xFFC0:
+		m.handleOpen()
+	case 0xFFC3:
+		m.handleClose()
+	case 0xFFC6:
+		m.handleChkin()
+	case 0xFFCF:
+		m.handleChrin()
+	case 0xFFD5:
+		m.handleLoad()
+	}
+
 	cycles := m.cpu.step()
 	m.cpu.ClockAdd(uint64(cycles))
 
@@ -254,6 +288,130 @@ func (m *Machine) Step() int {
 		}
 	}
 	return int(cycles)
+}
+
+// MountD64 attaches a D64 disk image for KERNAL LOAD interception.
+func (m *Machine) MountD64(reader *D64Reader) {
+	m.d64Reader = reader
+}
+
+// handleSetLfs implements the KERNAL SETLFS routine ($FFBA).
+// Input: A = device, X = secondary address, Y = not used
+func (m *Machine) handleSetLfs() {
+	m.hookLfsDevice = m.cpu.A
+	m.hookLfsSecondary = m.cpu.X
+}
+
+// handleSetNam implements the KERNAL SETNAM routine ($FFBD).
+// Input: A = name length, X/Y = pointer to name
+func (m *Machine) handleSetNam() {
+	length := int(m.cpu.A)
+	if length > 16 {
+		length = 16
+	}
+	ptr := uint16(m.cpu.X) | uint16(m.cpu.Y)<<8
+	name := make([]byte, length)
+	for i := 0; i < length; i++ {
+		name[i] = m.bus.Read(ptr + uint16(i))
+	}
+	m.hookFileName = string(name)
+}
+
+// handleOpen implements the KERNAL OPEN routine ($FFC0).
+func (m *Machine) handleOpen() {
+	if m.d64Reader == nil {
+		m.cpu.SR |= 0x01 // Carry = error
+		return
+	}
+	// The filename was already set by SETNAM; the device/secondary by SETLFS.
+	// Try to open the file from the D64.
+	data, err := m.d64Reader.ReadFile(m.hookFileName)
+	if err != nil {
+		m.cpu.SR |= 0x01 // Carry = error
+		return
+	}
+	m.serialData = data
+	m.serialPos = 0
+	m.serialOpen = true
+	m.cpu.SR &^= 0x01 // Clear Carry = success
+}
+
+// handleClose implements the KERNAL CLOSE routine ($FFC3).
+func (m *Machine) handleClose() {
+	m.serialOpen = false
+	m.serialData = nil
+	m.serialPos = 0
+}
+
+// handleChkin implements the KERNAL CHKIN routine ($FFC6).
+// Input: X = logical file number.
+func (m *Machine) handleChkin() {
+	// Nothing special needed; CHRIN will read from serialData if open.
+	m.cpu.SR &^= 0x01 // Clear Carry = success
+}
+
+// handleChrin implements the KERNAL CHRIN routine ($FFCF).
+// Returns next byte in A. Sets Carry on error/EOF.
+func (m *Machine) handleChrin() {
+	if !m.serialOpen || m.serialData == nil {
+		m.cpu.A = 0x0D // Return CR as EOF marker
+		m.cpu.SR |= 0x01
+		return
+	}
+	if m.serialPos >= len(m.serialData) {
+		m.cpu.A = 0x0D // EOF
+		m.cpu.SR |= 0x01
+		return
+	}
+	m.cpu.A = m.serialData[m.serialPos]
+	m.serialPos++
+	m.cpu.SR &^= 0x01 // Clear Carry = success
+}
+
+// handleLoad implements the KERNAL LOAD routine ($FFD5).
+// Input: A = 0 (load to address in file), A != 0 (load to X/Y)
+// Output: C = 0 success, C = 1 error. X/Y = end address.
+func (m *Machine) handleLoad() {
+	if m.d64Reader == nil {
+		m.cpu.SR |= 0x01 // Set Carry = error
+		return
+	}
+
+	data, err := m.d64Reader.ReadFile(m.hookFileName)
+	if err != nil {
+		m.cpu.SR |= 0x01 // Set Carry = error
+		return
+	}
+	if len(data) < 2 {
+		m.cpu.SR |= 0x01 // Set Carry = error
+		return
+	}
+
+	// Determine load address
+	var loadAddr uint16
+	if m.cpu.A == 0 {
+		// Use address from file header
+		loadAddr = uint16(data[0]) | uint16(data[1])<<8
+	} else {
+		// Override with X/Y
+		loadAddr = uint16(m.cpu.X) | uint16(m.cpu.Y)<<8
+	}
+
+	// Write file data to RAM (skip 2-byte header when using file address)
+	start := 2
+	if m.cpu.A != 0 {
+		start = 0 // No header when overriding
+	}
+	for i := start; i < len(data); i++ {
+		m.bus.Write(loadAddr+uint16(i-start), data[i])
+	}
+
+	// Set end address in X/Y
+	endAddr := loadAddr + uint16(len(data)-start)
+	m.cpu.X = uint8(endAddr & 0xFF)
+	m.cpu.Y = uint8(endAddr >> 8)
+	m.cpu.SR &^= 0x01 // Clear Carry = success
+	fmt.Printf("[KERNAL LOAD] OK: loaded '%s' to $%04X-$%04X (%d bytes)\n", m.hookFileName, loadAddr, endAddr, len(data)-start)
 }
 
 func (m *Machine) CPU() *CPU6510 {

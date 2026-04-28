@@ -76,8 +76,21 @@ func (b *Bus) Read(addr uint16) uint8 {
 		}
 		return b.RAM[addr]
 	case addr >= 0xE000:
-		if b.hiram() && len(b.Kernal) > 0 {
-			return b.Kernal[addr-0xE000]
+		if b.hiram() {
+			// Hook KERNAL I/O routines so the emulator can intercept them
+			switch addr {
+		case 0xFFBA, // SETLFS
+			0xFFBD, // SETNAM
+			0xFFC0, // OPEN
+			0xFFC3, // CLOSE
+			0xFFC6, // CHKIN
+			0xFFCF, // CHRIN
+			0xFFD5: // LOAD
+			return 0x60 // RTS - let the Machine hook handle the logic
+			}
+			if len(b.Kernal) > 0 {
+				return b.Kernal[addr-0xE000]
+			}
 		}
 		return b.RAM[addr]
 	default:

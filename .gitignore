@@ -28,10 +28,12 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# ROMs (copyrighted content - users must provide their own)
+# ROMs and disk images (copyrighted content - users must provide their own)
 roms/basic
 roms/kernal
 roms/chargen
+*.D64
+*.d64
 
 # Build output
 dist/

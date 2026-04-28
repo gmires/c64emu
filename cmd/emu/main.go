@@ -133,6 +133,10 @@ func main() {
 			}
 			os.Exit(0)
 		}
+		// Mount the D64 so KERNAL LOAD can fetch additional files at runtime
+		machine.MountD64(d64)
+		fmt.Printf("Mounted D64: %s\n", *d64File)
+
 		if *d64Bulk {
 			// Load all PRG files
 			loaded, err := d64.LoadAllPRG(machine)

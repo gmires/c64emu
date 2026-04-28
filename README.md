@@ -33,7 +33,7 @@ Questo progetto emula l'hardware del Commodore 64 includendo:
 | Joystick input | ✅ | Emulato da tastiera (freccie + Ctrl destro) |
 | GUI Window (Ebiten) | ✅ | 60 FPS, scala configurabile, fullscreen |
 | PRG Loader | ✅ | Auto-run con RUN (BASIC) o JMP (ML) |
-| D64 Loader | ✅ | List, extract, partial name matching, bulk load |
+| D64 Loader | ✅ | List, extract, partial match, bulk load, KERNAL I/O hook |
 | TAP Loader | ⚠️ | Basic PRG extraction |
 | CRT Loader | ✅ | Cartridge ROM mapping |
 | Save States | ✅ | Salvataggio/caricamento completo |
@@ -237,6 +237,11 @@ roms/
 
 # Carica TUTTI i file PRG da D64 in memoria (utile per giochi multi-file)
 ./c64emu -d64 disco.d64 -d64bulk -autorun -gui
+
+# Giochi multi-file che caricano durante l'esecuzione (hook KERNAL I/O)
+# Il D64 viene montato e le chiamate KERNAL LOAD/OPEN/CHRIN vengono
+# intercettate per caricare file dal disco automaticamente.
+./c64emu -d64 disco.d64 -d64file "GIOCO" -autorun -gui
 
 # Carica da TAP
 ./c64emu -tap gioco.tap -autorun -gui
@@ -608,7 +613,7 @@ $E000-$FFFF  ROM KERNAL (8KB, se HIRAM=1)
 - [ ] **Raster interrupts** avanzati — timing preciso per split-screen
 - [x] **Audio output** su device audio reale — ✅ Base implementata via Ebiten stream
 - [x] **Fullscreen mode** — ✅ Supportato
-- [ ] **1541 Disk Drive completo** — emulazione protocollo seriale KERNAL per giochi multi-file D64 (es. Pyramid) che caricano dati durante l'esecuzione
+- [x] **KERNAL I/O hook** — ✅ Intercetta LOAD/OPEN/CHKIN/CHRIN per caricare file dal D64 montato. Supporta giochi che usano le routine KERNAL standard. Giochi con loader custom (es. Pyramid) potrebbero richiedere ulteriore lavoro
 
 ### Priorità Bassa
 - [ ] **REU** (RAM Expansion Unit)
