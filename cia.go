@@ -26,15 +26,36 @@ type CIA struct {
 }
 
 func NewCIA(bus *Bus, idx int) *CIA {
-	return &CIA{
+	c := &CIA{
 		clk:  0,
 		bus:  bus,
 		idx:  idx,
-		ddrA: 0xFF,
-		ddrB: 0xFF,
-		joyA: 0xFF,
-		joyB: 0xFF,
 	}
+	c.Reset()
+	return c
+}
+
+func (c *CIA) Reset() {
+	c.clk = 0
+	c.portA = 0
+	c.portB = 0
+	c.ddrA = 0
+	c.ddrB = 0
+	c.timerA = 0
+	c.timerB = 0
+	c.timerALatch = 0
+	c.timerBLatch = 0
+	c.ctrlA = 0
+	c.ctrlB = 0
+	c.intMask = 0
+	c.intFlags = 0
+	c.ser = 0
+	c.irqLine = false
+	c.portFlag = false
+	c.regs = [16]uint8{}
+	c.keyboard = [8][8]bool{}
+	c.joyA = 0xFF
+	c.joyB = 0xFF
 }
 
 func (c *CIA) Step() {

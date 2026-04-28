@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"strings"
 )
 
 type Machine struct {
@@ -215,6 +216,11 @@ func (m *Machine) Reset() {
 	// With DDR=0, all pins are inputs and pull-ups make them read as 1
 	m.bus.Write(0x0000, 0x00) // DDR = all input
 	m.bus.Write(0x0001, 0x00) // Data = 0
+	// Reset all hardware components (as VICE does)
+	m.cia[0].Reset()
+	m.cia[1].Reset()
+	m.vic.Reset()
+	m.sid.Reset()
 }
 
 func (m *Machine) Run() error {
@@ -306,15 +312,12 @@ func (m *Machine) handleSetLfs() {
 // Input: A = name length, X/Y = pointer to name
 func (m *Machine) handleSetNam() {
 	length := int(m.cpu.A)
-	if length > 16 {
-		length = 16
-	}
-	ptr := uint16(m.cpu.X) | uint16(m.cpu.Y)<<8
-	name := make([]byte, length)
+	namePtr := uint16(m.cpu.X) | uint16(m.cpu.Y)<<8
+	var nameBytes []byte
 	for i := 0; i < length; i++ {
-		name[i] = m.bus.Read(ptr + uint16(i))
+		nameBytes = append(nameBytes, m.bus.Read(namePtr+uint16(i)))
 	}
-	m.hookFileName = string(name)
+	m.hookFileName = strings.TrimSpace(string(nameBytes))
 }
 
 // handleOpen implements the KERNAL OPEN routine ($FFC0).
@@ -323,8 +326,6 @@ func (m *Machine) handleOpen() {
 		m.cpu.SR |= 0x01 // Carry = error
 		return
 	}
-	// The filename was already set by SETNAM; the device/secondary by SETLFS.
-	// Try to open the file from the D64.
 	data, err := m.d64Reader.ReadFile(m.hookFileName)
 	if err != nil {
 		m.cpu.SR |= 0x01 // Carry = error
@@ -410,8 +411,20 @@ func (m *Machine) handleLoad() {
 	endAddr := loadAddr + uint16(len(data)-start)
 	m.cpu.X = uint8(endAddr & 0xFF)
 	m.cpu.Y = uint8(endAddr >> 8)
+
+	// Update BASIC pointers if loaded to standard BASIC area ($0801)
+	if loadAddr == 0x0801 {
+		m.bus.Write(0x002D, uint8(endAddr))
+		m.bus.Write(0x002E, uint8(endAddr>>8))
+		m.bus.Write(0x002F, uint8(endAddr))
+		m.bus.Write(0x0030, uint8(endAddr>>8))
+		m.bus.Write(0x0031, uint8(endAddr))
+		m.bus.Write(0x0032, uint8(endAddr>>8))
+		m.bus.Write(0x00AE, uint8(endAddr))
+		m.bus.Write(0x00AF, uint8(endAddr>>8))
+	}
+
 	m.cpu.SR &^= 0x01 // Clear Carry = success
-	fmt.Printf("[KERNAL LOAD] OK: loaded '%s' to $%04X-$%04X (%d bytes)\n", m.hookFileName, loadAddr, endAddr, len(data)-start)
 }
 
 func (m *Machine) CPU() *CPU6510 {

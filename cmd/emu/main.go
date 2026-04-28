@@ -159,6 +159,18 @@ func main() {
 			for i := 2; i < len(data); i++ {
 				machine.Bus().Write(prgAddr+uint16(i-2), data[i])
 			}
+			// Update BASIC pointers if loaded to standard BASIC area
+			if prgAddr == 0x0801 {
+				endAddr := prgAddr + uint16(len(data)-2)
+				machine.Bus().Write(0x002D, uint8(endAddr))
+				machine.Bus().Write(0x002E, uint8(endAddr>>8))
+				machine.Bus().Write(0x002F, uint8(endAddr))
+				machine.Bus().Write(0x0030, uint8(endAddr>>8))
+				machine.Bus().Write(0x0031, uint8(endAddr))
+				machine.Bus().Write(0x0032, uint8(endAddr>>8))
+				machine.Bus().Write(0x00AE, uint8(endAddr))
+				machine.Bus().Write(0x00AF, uint8(endAddr>>8))
+			}
 			fmt.Printf("Loaded '%s' from D64 at $%04X (%d bytes)\n", *d64Entry, prgAddr, len(data)-2)
 		}
 	}
@@ -181,6 +193,18 @@ func main() {
 		for i := 2; i < len(data); i++ {
 			machine.Bus().Write(prgAddr+uint16(i-2), data[i])
 		}
+		// Update BASIC pointers if loaded to standard BASIC area
+		if prgAddr == 0x0801 {
+			endAddr := prgAddr + uint16(len(data)-2)
+			machine.Bus().Write(0x002D, uint8(endAddr))
+			machine.Bus().Write(0x002E, uint8(endAddr>>8))
+			machine.Bus().Write(0x002F, uint8(endAddr))
+			machine.Bus().Write(0x0030, uint8(endAddr>>8))
+			machine.Bus().Write(0x0031, uint8(endAddr))
+			machine.Bus().Write(0x0032, uint8(endAddr>>8))
+			machine.Bus().Write(0x00AE, uint8(endAddr))
+			machine.Bus().Write(0x00AF, uint8(endAddr>>8))
+		}
 		fmt.Printf("Loaded PRG from TAP at $%04X (%d bytes)\n", prgAddr, len(data)-2)
 	}
 
@@ -199,7 +223,7 @@ func main() {
 	}
 
 	// Auto-run
-	if *autoRun && *prgFile != "" && romsLoaded {
+	if *autoRun && romsLoaded && (prgAddr != 0) {
 		fmt.Println("Auto-run enabled...")
 		machine.AutoRun(prgAddr)
 	}

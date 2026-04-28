@@ -27,11 +27,23 @@ type oscillator struct {
 }
 
 func NewSID(bus *Bus) *SID {
-	return &SID{
-		clk: 0,
-		bus: bus,
-		vol: 0x0F,
-	}
+	s := &SID{bus: bus}
+	s.Reset()
+	return s
+}
+
+func (s *SID) Reset() {
+	s.clk = 0
+	s.osc = [3]oscillator{}
+	s.filter = 0
+	s.resonance = 0
+	s.vol = 0x0F
+	s.osc3val = 0
+	s.filterCutoff = 0
+	s.filterMode = 0
+	s.filterVoice = 0
+	s.filterZ1 = 0
+	s.filterZ2 = 0
 }
 
 func (s *SID) step() uint8 {

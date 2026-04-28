@@ -41,7 +41,7 @@ Questo progetto emula l'hardware del Commodore 64 includendo:
 | ROM Validation | ✅ | Checksum + reset vector + chargen pattern |
 | Debug Visualization Overlay | ✅ | Griglia, bordi, marker centro |
 | Embedded Font Fallback | ✅ | Font PETSCII completo |
-| KERNAL reale | ✅ | Boot completo fino a READY. |
+| KERNAL reale | ⚠️ | Boot completo ma main loop genera spurious errors (vedi Known Issues) |
 | CIA Timer | ✅ | Cycle-accurate PAL/NTSC |
 | NTSC Mode | ✅ | 262 linee, 65 cicli/linea |
 
@@ -396,8 +396,22 @@ L'emulatore riconosce, carica ed esegue correttamente le ROM C64 (BASIC, KERNAL,
 - ✅ VIC-II `$D018` memory pointers (screen/char base)
 - ✅ Character ROM mapping per VIC-II ($1000-$1FFF / $9000-$9FFF)
 - ✅ Color RAM sempre accessibile al VIC-II indipendentemente da CHAREN
-- ✅ **KERNAL boot completo**: RAMTAS → CINT → IOINIT → BASIC startup → READY.
+- ⚠️ **KERNAL boot completo ma con bug post-boot** (vedi Known Issues sotto)
 - ✅ Schermo di boot fallback disponibile per test senza ROM
+
+### Known Issues
+
+**Cold start bug — `?OUT OF DATA ERROR IN 0` loop**
+Il KERNAL ROM completa correttamente RAMTAS → CINT → IOINIT → BASIC startup, ma il main loop del BASIC stampa ripetutamente `?OUT OF DATA ERROR IN 0` invece di `READY.`.
+
+**Causa identificata:** Il vettore `$0300`/`$0301` (usato dall'IRQ handler e dal warm start) non viene inizializzato correttamente durante il cold start. Il BASIC warm start a `$E394` chiama `$E453` che *dovrebbe* copiare i vettori a `$0300-$030B`, ma il valore letto da `$0300`/`$0301` rimane `$0000`. Quando l'IRQ handler del KERNAL salta a `($0300)`, il CPU finisce a `$0000` (BRK → interrupt loop → warm start → JMP `$0000`...). Questo corrompe lo zero-page, incluso il flag errore `$79` che viene sovrascritto con `$AD` (opcode LDA assoluto copiato da una tabella del KERNAL). Da quel momento il BASIC main loop vede un errore pendente e stampa il messaggio ripetutamente.
+
+**Impatto:**
+- Giochi/carichi da PRG/D64/TAP **non funzionano** con le ROM reali (il cold start fallisce silenziosamente)
+- Lo schermo di boot **fallback** (senza ROM) funziona perfettamente
+- I save states caricati da una macchina già avviata funzionerebbero, ma non possiamo generarli con questo bug
+
+**Workaround attuale:** Nessuno. Serve un fix nel percorso di cold start o nell'inizializzazione dei vettori `$0300-$030B`.
 
 **Per usare l'emulatore:**
 ```bash
@@ -605,6 +619,7 @@ $E000-$FFFF  ROM KERNAL (8KB, se HIRAM=1)
 ## Componenti Mancanti / Futuri
 
 ### Priorità Alta
+- [ ] **Fix cold start bug** — Il main loop del BASIC stampa `?OUT OF DATA ERROR IN 0` dopo il boot. Causa: vettore `$0300` non inizializzato correttamente (vedi Known Issues)
 - [x] **Fix CIA timer decrement** — ✅ Risolto: `runFrame()` contava istruzioni invece di cicli totali
 - [x] **SID Filtri** (Low-pass, Band-pass, High-pass) — ✅ Base implementata
 - [x] **Proper IRQ timing** — ✅ Timer underflow a ~60Hz stabili
@@ -613,7 +628,7 @@ $E000-$FFFF  ROM KERNAL (8KB, se HIRAM=1)
 - [ ] **Raster interrupts** avanzati — timing preciso per split-screen
 - [x] **Audio output** su device audio reale — ✅ Base implementata via Ebiten stream
 - [x] **Fullscreen mode** — ✅ Supportato
-- [x] **KERNAL I/O hook** — ✅ Intercetta LOAD/OPEN/CHKIN/CHRIN per caricare file dal D64 montato. Supporta giochi che usano le routine KERNAL standard. Giochi con loader custom (es. Pyramid) potrebbero richiedere ulteriore lavoro
+- [x] **KERNAL I/O hook** — ✅ Intercetta LOAD/OPEN/CHKIN/CHRIN per caricare file dal D64 montato. **Non utilizzabile** finché il cold start bug non è risolto (il main loop BASIC non raggiunge i programmi caricati)
 
 ### Priorità Bassa
 - [ ] **REU** (RAM Expansion Unit)

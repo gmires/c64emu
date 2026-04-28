@@ -42,17 +42,39 @@ type VIC2 struct {
 }
 
 func NewVIC2(bus *Bus, cfg *SystemConfig) *VIC2 {
-	return &VIC2{
-		clk:           0,
-		bus:           bus,
-		cfg:           cfg,
-		raster:        NewRasterRenderer(bus, cfg),
-		frameBuf:      make([]uint32, VIC_SCREEN_WIDTH*VIC_SCREEN_HEIGHT),
-		line:          0,
-		cycle:         0,
-		borderColor:   0x0E,
-		bgColor:       [4]uint8{0x06, 0x00, 0x00, 0x00},
+	v := &VIC2{
+		bus:      bus,
+		cfg:      cfg,
+		raster:   NewRasterRenderer(bus, cfg),
+		frameBuf: make([]uint32, VIC_SCREEN_WIDTH*VIC_SCREEN_HEIGHT),
 	}
+	v.Reset()
+	return v
+}
+
+func (v *VIC2) Reset() {
+	v.clk = 0
+	v.mx = [8]uint16{}
+	v.my = [8]uint8{}
+	v.mxExp = 0
+	v.myExp = 0
+	v.spritePrior = 0
+	v.spriteMC = 0
+	v.spriteColl = 0
+	v.spriteBkgColl = 0
+	v.spriteEn = 0
+	v.ctrl1 = 0
+	v.ctrl2 = 0
+	v.irqMask = 0
+	v.irqFlags = 0
+	v.rasterIRQLine = 0
+	v.scrollX = 0
+	v.scrollY = 0
+	v.borderColor = 0x0E
+	v.bgColor = [4]uint8{0x06, 0x00, 0x00, 0x00}
+	v.regs = [64]uint8{}
+	v.line = 0
+	v.cycle = 0
 }
 
 func (v *VIC2) step() uint8 {
